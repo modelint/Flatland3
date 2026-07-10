@@ -1,5 +1,11 @@
 # Flatland Model Diagram Generator
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/modelint/flatland/main/docs/images/flatland.png"
+       alt="Flatland combines a model text file (.xcm or .xsm) and a layout text file (.mls) to generate a model diagram as SVG or PDF"
+       width="720">
+</p>
+
 ### June 29, 2026 -- 3.0 Released with SVG and PDF Diagram Output
 
 Flatland generates beautiful, readable model diagrams from plain text — laid out exactly the way you
