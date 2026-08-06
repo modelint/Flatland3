@@ -40,3 +40,4 @@ connectors
     +Go.2 : t-2|READY TO GO : l|Requesting transport
     +Passing floor-2 :  l*|MOVING : r+2|Update location
     -Location updated+1 : r-2|Update location : l*|MOVING
+    +Take out of service.3 : r|PICKUP DROPOFF : l|OUT OF SERVICE : L6R-2

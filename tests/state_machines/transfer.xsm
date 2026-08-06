@@ -2,28 +2,30 @@ metadata
     Title : Transfer State Machine Diagram
     Author : Leon Starr
     Document ID : mint.elevator3.td.5
-    Modification date : January 22, 2026
-    Version : 3.5.2
+    Modification date : Aug 5, 2026
+    Version : 3.6.0
     Organization : Model Integration, LLC
     Copyright notice > MIT
     Organization logo > mint
 domain Elevator Management
 class Transfer
-events
+interaction events
     Execute
     Dest change request
     Ready to go
+    Cabin redirected
+    Cabin at destination
+    Requests cleared
+    Door closed
+completion events
+    Wait for cabin
     Cabin dispatched
     Stationary update
     Redirect requested
-    Cabin redirected
     Update in motion
-    Cabin at destination
     Reversal checked
     Call in progress
     Wait to clear
-    Requests cleared
-    Door closed
 --
 initial transitions
     Execute > WAITING FOR CABIN
@@ -35,12 +37,36 @@ activity
 transitions
     Ready to go > Dispatching cabin
     Dest change request > Changing destination before cabin moves
+ignore
+    Door closed
+        <Door closing not relevant yet> Doors may open and close while waiting to hear back
+        from the Cabin. But we don’t care about closing unless we are waiting for floor
+        service to expire after arrival.
+can't happen
+    Execute
+        <Execute only from creating shaft state> Execute event is sent from same state of
+        Shaft that creates the Transfer. So this event can’t happen unless a whole new
+        Transfer is created.
+    Dest change request
+        Execute event is sent from same state of Shaft that creates the Transfer. This event
+        is also sent from Shaft, in a future state, so it will always be detected after
+        transitioning out of this state.
+    Cabin redirected
+        <Cabin not directed to move yet> Cabin hasn’t been directed to move yet.
+    Ready to go
+        Cabin hasn’t yet been directed to the state where this event would be sent.
+    Cabin at destination
+        <Cabin not directed to move yet>
+    Requests cleared
+        <Requests not yet cleared> We haven’t yet tried to clear any stop or floor call
+        requests yet, and they can’t clear themselves alone. (Even an administration clear
+        would have to first delete this instance of transfer).
 --
 state Changing destination before cabin moves( new dest: Level Name )
 activity
     // The cabin isn’t moving, so we can safely
-    //     relink to the new destination
-    &R53 Accessible Shaft Level(Floor: ^new dest; Shaft: Shaft)
+    // relink to the new destination
+    Destination floor = ^new dest
     Stationary update -> me
 transitions
     Stationary update > WAITING FOR CABIN
@@ -59,6 +85,18 @@ transitions
     Dest change request > Request redirect
     Cabin redirected > Match new destination of cabin
     Cabin at destination > Check for cabin reversal
+can't happen
+    Execute
+        <Execute only from creating shaft state>
+    Ready to go
+        The Cabin has already reported this and cannot get back to a state where it can
+        report it again without direction from this instance of Transfer, which won’t
+        be triggered.
+    Door closed
+        The doors cannot be open when a cabin is moving. So, if we hear that they are
+        just closed in this state, something has gone very wrong!
+    Requests cleared
+        <Requests not yet cleared>
 --
 state Request redirect( new dest: Level Name )
 activity
@@ -69,7 +107,7 @@ transitions
 --
 state Match new destination of cabin( updated dest: Level Name )
 activity
-    &R53 Accessible Shaft Level(Floor: ^updated dest; Shaft: Shaft)
+    Destination floor = ^updated dest
     Update in motion -> me
 transitions
     Update in motion > CABIN IN MOTION
@@ -79,10 +117,10 @@ activity
     // If the Cabin arrives and there is a floor request in the opposite direction
     // and no stop request or call in the Cabin’s current travel direction,
     // we must reverse the cabin’s travel direction
-    //
-    call behind .= /R53/Accessible Shaft Level/R49/Floor Service(1, Direction: /R53/Cabin.Travel direction.opposite )
-    call fwd .= /R53/Accessible Shaft Level/R49/Floor Service(1, Direction: /R53/Cabin.Travel direction )
-    switch dir = call behind and !call fwd and !/R53/Accessible Shaft Level.Stop requested
+
+    call behind .= /R53/R49/Floor Service( Direction: /R53/Cabin.Travel direction.opposite )
+    call fwd .= /R53/R49/Floor Service( Direction: /R53/Cabin.Travel direction )
+    switch dir = (call behind and !call fwd and !/R53/Accessible Shaft Level.Stop requested)
     switch dir? /R53/Cabin.Travel direction.toggle
 
     Reversal checked -> me
@@ -91,30 +129,48 @@ transitions
 --
 state Check for active floor service
 activity
-        Cabin arrived( Shaft, direction: /R53/Cabin.Travel direction ) -> ~UI
-        pending floor service .= /R53/Accessible Shaft Level/R49/Floor Service(1, Direction: /R53/Cabin.Travel direction )
+    UI.Cabin arrived( Shaft, direction: /R53/Cabin.Travel direction )
+    pending floor service .= /R53/R49/Floor Service( Direction: /R53/Cabin.Travel direction )
 
-        pending floor service? {
-            Call in progress -> me
-            Cabin arrived -> pending floor service
-        } : {
-            Stop serviced -> /R53/Accessible Shaft Level
-            Wait to clear -> me
-        }
+    pending floor service? {
+        Call in progress -> meCabin
+        Cabin arrived -> pending floor service
+    } : {
+        Serviced stop -> /R53/Accessible Shaft Level
+        Wait to clear -> me
+    }
 transitions
     Call in progress > CALL IN PROGRESS
     Wait to clear > WAITING FOR REQUESTS TO CLEAR
 --
 state CALL IN PROGRESS
 activity
-    // Floor call pending
 transitions
     Door closed > Canceling floor service
+ignore
+    Dest change request
+        <Cannot redirect now> Shaft may have picked a destination, but we can’t go there
+        now. We will retrigger the search when this Transfer is deleted, so there is no
+        danger of missing a request.
+can't happen
+    Execute
+        <Execute only from creating shaft state>
+    Cabin redirected
+        <Cabin not moving now> This event can only be sent from the cabin when it is
+        moving. But it can’t be moving in this state.
+    Ready to go
+        <Cabin has finished moving> This event can only be sent from the cabin just before
+        it begins moving. And it can’t advance beyond that without direction from this
+        instance. At this point the cabin has finished moving.
+    Cabin at destination
+        <Cabin already arrived> The cabin has already arrived.
+    Requests cleared
+        <Requests not yet cleared>
 --
 state Canceling floor service
 activity
-        Cancel -> /R53/Accessible Shaft Level/R49/Floor Service( Direction: /R53/Cabin.Travel direction )
-        Wait to clear -> me
+    Cancel -> /R53/R49/Floor Service( Direction: /R53/Cabin.Travel direction )
+    Wait to clear -> me
 transitions
     Wait to clear > WAITING FOR REQUESTS TO CLEAR
 --
@@ -123,8 +179,23 @@ activity
     // Requests still pending
 transitions
     Requests cleared > Delete
+ignore
+    Dest change request
+        <Cannot redirect now>
+    Door closed
+        Not likely to happen, but we just don’t care at this point. There is no critical
+        synchronization with the door once the call in progress has been canceled.
+can't happen
+    Execute
+        <Execute only from creating shaft state>
+    Cabin redirected
+        <Cabin not moving now>
+    Ready to go
+        <Cabin has finished moving>
+    Cabin at destination
+        <Cabin already arrived>
 --
 state Delete !*
 activity
-        Transfer completed -> R53( /R53/Cabin/R2/Shaft )
+    Transfer completed -> R53( Shaft )
 --

@@ -2,29 +2,30 @@ metadata
     Title : Cabin State Machine Diagram
     Author : Leon Starr
     Document ID : mint.elevator3.td.6
-    Modification date : February 5, 2026
-    Version : 3.5.2
+    Modification date : August 3, 2026
+    Version : 3.6.0
     Organization : Model Integration, LLC
     Copyright notice > MIT
     Organization logo > mint
 domain Elevator Management
 class Cabin
-events
+interaction events
     Doors secure
-    Prepare to move
-    Already there
     New transfer
     Take out of service
     Arrived at floor
     Cabin stopping
-    Change requested
     Try redirect
     Transport unavailable
-    Transport in progress
     Go
-    Transfer notified
     Destination update
     Passing floor
+completion events
+    Prepare to move
+    Already there
+    Change requested
+    Transport in progress
+    Transfer notified
     Location updated
 --
 state Update location( floor: Level Name )
@@ -55,6 +56,26 @@ activity
 transitions
     Take out of service > OUT OF SERVICE
     Go > Requesting transport
+can't happen
+    Doors secure
+        Doors can’t get back to the state where they report this until we’ve gone through
+        another move cycle and have been locked again.
+    New transfer
+        <Transfer already exists> Transfer already exists and won’t be deleted until we get
+        through another move cycle.
+    Arrived at floor
+        <Cabin already stopped> Cabin is already stopped.
+    Cabin stopping
+        <Unexpected stop> No emergency stop was requested.
+    Try redirect
+        <No redirect until moving> We have a new Transfer and it can’t ask for a redirect
+        until we get moving again.
+    Transport unavailable
+        <Cabin not moving> Cannot occur if cabin is not moving
+    Destination update
+        <Cabin not moving>
+    Passing floor
+        <Cabin not moving>
 --
 state SECURING DOORS
 activity
@@ -64,6 +85,24 @@ activity
 transitions
     Doors secure > READY TO GO
     Take out of service > OUT OF SERVICE
+can't happen
+    New transfer
+        <Transfer already exists>
+    Arrived at floor
+        <Cabin already stopped>
+    Try redirect
+        <No redirect until moving>
+    Go
+        No, the whole point is to hold here until the transfer acknowledges that door is
+        in the Locked state and the cabin is stationary.
+    Cabin stopping
+        <Unexpected stop>
+    Transport unavailable
+        <Cabin not moving>
+    Destination update
+        <Cabin not moving>
+    Passing floor
+        <Cabin not moving>
 --
 state Are we already there?
 activity
@@ -80,6 +119,27 @@ activity
     ! /R2/Shaft.In service ? Take out of service -> me
 transitions
     New transfer > Are we already there?
+    Take out of service > OUT OF SERVICE
+ignore
+    Try redirect
+        Possible if Transfer requests redirect just as arrival occurs. We can safely ignore
+        because when the Transfer completes it will trigger another search for service.
+can't happen
+    Doors secure
+        This only happens in response to lock requested in Securing Doors state. And we
+        don’t leave that state until the event happens.
+    Arrived at floor
+        <Cabin already stopped>
+    Go
+        Transfer can’t send this event until after we advance to the Locking Transfer state.
+    Cabin stopping
+        <Unexpected stop>
+    Transport unavailable
+        <Cabin not moving>
+    Destination update
+        <Cabin not moving>
+    Passing floor
+        <Cabin not moving>
 --
 state Set emergency stop( nearest safe stop : Level Name)
 activity
@@ -91,12 +151,56 @@ state OUT OF SERVICE
 activity
     /R4/Door.Emergency hold.set
     Passenger open -> /R4/Door
+    /R2/Shaft.In service.unset
+can't happen
+    Doors secure
+        <Out of service final state> Final state. Interacting instances should verify in
+        service status before sending any events.
+    New transfer
+        <Out of service final state>
+    Take out of service
+        <Out of service final state>
+    Arrived at floor
+        <Out of service final state>
+    Cabin stopping
+        <Out of service final state>
+    Try redirect
+        <Out of service final state>
+    Transport unavailable
+        <Out of service final state>
+    Go
+        <Out of service final state>
+    Destination update
+        <Out of service final state>
+    Passing floor
+        <Out of service final state>
 --
 state EMERGENCY BRAKING
 activity
     Stop at nearest floor -> ~TRANS
+    /R2/Shaft.In service.unset
 transitions
     Cabin stopping > Set emergency stop
+ignore
+    Take out of service
+        We are already going out of service, so no need to react.
+    Arrived at floor
+        <Going out of service> Doesn't matter since we are going out of service.
+    Try redirect
+        <Going out of service>
+    Transport unavailable
+        <Going out of service>
+    Destination update
+        <Going out of service>
+    Passing floor
+        <Going out of service>
+can't happen
+    Doors secure
+        The doors must already be closed if we are braking.
+    New transfer
+        The transfer in progress has not completed, so we can't get another one now.
+    Go
+        Transfer can’t send this event until after we advance to the Locking Transfer state.
 --
 state MOVING
 activity
@@ -107,6 +211,18 @@ transitions
     Destination update > Notify transfer
     Transport unavailable > OUT OF SERVICE
     Passing floor > Update location
+can't happen
+    Doors secure
+        This is a serious ‘out of sync’ error. The doors must be secure (closed and locked)
+        while the cabin is moving.
+    New transfer
+        The transfer has already directed the cabin to move and it only does it once,
+        so it can’t happen again.
+    Go
+        The transfer has already directed us to go and it only does this once during
+        its lifecycle.
+    Cabin stopping
+        <Unexpected stop>
 --
 state Requesting transport
 activity

@@ -9,17 +9,18 @@ metadata
     Organization logo > mint
 domain Elevator Management
 class Door
-events
+interaction events
     Door opened
     Passenger open
     Passenger close
-    Open delay canceled
     Time to close
     Hold released
     Door closed
     Lock
     Unlock
     Door blocked
+completion events
+    Open delay canceled
     Keep trying
     Cannot close door
 --
@@ -28,6 +29,27 @@ activity
 transitions
     Door opened > OPEN
     Passenger close > CLOSING
+ignore
+    Passenger open
+        The passenger can hit the open button all they like at this point,
+        but it will be ignored since the door is, in fact, opening now.
+    Lock
+        <Lock checked later> There’s nothing to do at this point, but we assume the lock attribute
+        will be set and we will check it later, so the event info is not lost.
+    Hold released
+        <Release checked elsewhere> This condition is saved as the Hold attribute status and
+        checked in the HOLDING OPEN state.
+can't happen
+    Door closed
+        Door is opening, so it should not detect ‘closed’.
+    Door blocked
+        Block can only be reported while closing the door. (door jams while opening are
+        not modeled, in this release anyway)
+    Unlock
+        <Cabin not moving> Cabin is not able to progress to a state where it can send this event while we are
+        opening the door.
+    Time to close
+        <Delay always canceled> This is a delayed event that is canceled on any path that enters the current state.
 --
 state OPEN
 activity
@@ -38,6 +60,22 @@ activity
 transitions
     Passenger close > Cancel open delay
     Time to close > HOLDING OPEN
+ignore
+    Passenger open
+        <Already open so ignored> Door is already open, so this is ignored.
+    Lock
+        <Lock checked later>
+    Hold released
+        <Release checked elsewhere>
+can't happen
+    Door opened
+        <Already open> The door is already open.
+    Door closed
+        <Open cannot instantly close> The door is open and cannot instantaneously be closed.
+    Door blocked
+        <Blocking makes no sense when open> Makes no sense if the door is open.
+    Unlock
+        <Cabin not moving>
 --
 state Cancel open delay
 activity
@@ -51,6 +89,25 @@ activity
     !Held ? Hold released -> me
 transitions
     Hold released > CLOSING
+ignore
+    Passenger open
+        <Already open so ignored>
+    Passenger close
+        Passenger is simultaneously requesting hold open and close. Open overrides,
+        so we just ignore.
+    Lock
+        <Lock checked later>
+can't happen
+    Door opened
+        <Already open>
+    Door closed
+        <Open cannot instantly close>
+    Door blocked
+        <Blocking makes no sense when open>
+    Unlock
+        <Cabin not moving>
+    Time to close
+        <Delay always canceled>
 --
 state CLOSING
 activity
@@ -58,6 +115,20 @@ transitions
     Door closed > CLOSED
     Passenger open > OPENING
     Door blocked > Count block
+ignore
+    Passenger close
+        We’re already closing, so just ignore.
+    Lock
+        <Lock checked later>
+    Hold released
+        <Release checked elsewhere>
+can't happen
+    Door opened
+        If we are closing, there’s no way to become open.
+    Unlock
+        <Cabin not moving>
+    Time to close
+        <Delay always canceled>
 --
 state CLOSED
 activity
@@ -69,6 +140,22 @@ activity
 transitions
     Lock > LOCKED
     Passenger open > OPENING
+ignore
+    Passenger close
+        <Already closed so ignored> The door is already closed, so just ignore.
+    Hold released
+        <Release checked elsewhere>
+can't happen
+    Door opened
+        The door is closed and cannot instantaneously be open.
+    Door closed
+        <Already closed> The door is already closed.
+    Door blocked
+        <Closed door cannot be blocked> You can’t block a closed door.
+    Unlock
+        Cabin can’t send an unlock before a lock, which would have put us in the LOCKED state.
+    Time to close
+        <Delay always canceled>
 --
 state LOCKED
 activity
@@ -77,6 +164,25 @@ activity
     Doors secure -> /R4/Cabin
 transitions
     Unlock > OPENING
+ignore
+    Passenger open
+        The door is not safe to open in this state so the request is ignored.
+    Passenger close
+        <Already closed so ignored>
+    Hold released
+        <Release checked elsewhere>
+can't happen
+    Door opened
+        The whole point of this state is to ensure the door is not opened.
+        It cannot open while locked.
+    Door closed
+        <Already closed>
+    Door blocked
+        <Closed door cannot be blocked>
+    Lock
+        The cabin is synched so that it won’t issue another lock request before unlocking.
+    Time to close
+        <Delay always canceled>
 --
 state Count block
 activity
@@ -92,4 +198,25 @@ transitions
 state CANNOT CLOSE
 activity
     Take out of service -> /R4/Cabin
+ignore
+    Hold released
+        <Release checked elsewhere>
+can't happen
+    Door opened
+        <Shaft out of service> Presumably the shaft is out of service and no events will be
+        issued until it is back in service again.
+    Door closed
+        <Shaft out of service>
+    Door blocked
+        <Shaft out of service>
+    Passenger open
+        <Shaft out of service>
+    Passenger close
+        <Shaft out of service>
+    Lock
+        <Shaft out of service>
+    Unlock
+        <Shaft out of service>
+    Time to close
+        <Delay always canceled>
 --

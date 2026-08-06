@@ -10,16 +10,21 @@ metadata
     Organization logo > mint
 domain Elevator Management
 class Floor Service
-events
+interaction events
     Cabin arrived
-    Middle floor
     Cancel
+completion events
+    Middle floor
     Top bottom floor
 --
 state WAITING FOR CABIN
 activity
 transitions
     Cabin arrived > Check bank level type
+can't happen
+    Cancel
+        <Transfer synch> Transfer cannot be out of sync with the floor service. It is the source of both
+        external events.
 --
 state Check bank level type
 activity
@@ -34,8 +39,13 @@ activity
     // Service direction won't change
 transitions
     Cancel > COMPLETED
+can't happen
+    Cabin arrived <Transfer synch>
 --
 state COMPLETED
 activity
     Serviced floor request( dir: Direction ) -> /R49/Accessible Shaft Level
+can't happen
+    Cabin arrived <Transfer synch>
+    Cancel <Transfer synch>
 --

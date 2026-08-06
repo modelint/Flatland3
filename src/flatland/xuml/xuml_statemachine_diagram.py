@@ -133,32 +133,31 @@ class XumlStateMachineDiagram:
                 # TODO: No creation states anymore, need to handle initial transitions
                 if state_block.transitions:
                     for t in state_block.transitions:
-                        if len(t) == 2:  # Not CH or IG
-                            evname = t[0]  # Event name
-                            if t.to_state in state_sigs:
-                                # Check the signature of the transition's destination state
-                                # If one is specified, included it in the connector name
-                                cname = make_event_cname(evname=evname, signature=state_sigs[t.to_state])
-                            else:
-                                # Otherwise, the connector name is just the event name
-                                cname = evname
-                            if evname not in cls.model.events:
-                                # An event is being referenced in some state of the model file that does not correspond
-                                # to any event defined in the event specification list near the top of the file
-                                cls.logger.error(
-                                    f'Undefined event [{evname}] used on transition from state [{state_block.state.name}]. '
-                                    f'Check event list in model file.'
-                                )
-                                sys.exit(1)
-                            try:
-                                # Note the and condition to ensure that there is, in fact, a connector name
-                                # before comparing. Initial transitions may not have an associated event
-                                t_place = [tp for tp in state_place if tp.get('cname') and tp['cname'] == evname][0]
-                            except IndexError:
-                                cls.logger.error(f'Model event [{evname}] does not name any connector in layout.')
-                                sys.exit(1)
-                            if t_place:
-                                cls.draw_transition(evname=cname, tlayout=t_place)
+                        evname = t[0]  # Event name
+                        if t.to_state in state_sigs:
+                            # Check the signature of the transition's destination state
+                            # If one is specified, included it in the connector name
+                            cname = make_event_cname(evname=evname, signature=state_sigs[t.to_state])
+                        else:
+                            # Otherwise, the connector name is just the event name
+                            cname = evname
+                        if evname not in cls.model.events:
+                            # An event is being referenced in some state of the model file that does not correspond
+                            # to any event defined in the event specification list near the top of the file
+                            cls.logger.error(
+                                f'Undefined event [{evname}] used on transition from state [{state_block.state.name}]. '
+                                f'Check event list in model file.'
+                            )
+                            sys.exit(1)
+                        try:
+                            # Note the and condition to ensure that there is, in fact, a connector name
+                            # before comparing. Initial transitions may not have an associated event
+                            t_place = [tp for tp in state_place if tp.get('cname') and tp['cname'] == evname][0]
+                        except IndexError:
+                            cls.logger.error(f'Model event [{evname}] does not name any connector in layout.')
+                            sys.exit(1)
+                        if t_place:
+                            cls.draw_transition(evname=cname, tlayout=t_place)
 
         cls.logger.info("Rendering the Canvas")
         cls.flatland_canvas.render()
